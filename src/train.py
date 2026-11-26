@@ -23,6 +23,8 @@ ap.add_argument("--pos_frac", type=float, default=0.25)
 ap.add_argument("--lr", type=float, default=2e-3)
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--zoom_out", type=float, default=1.0, help="縮小拡張の最大倍率（1で無効）")
+ap.add_argument("--cmin", type=float, default=0.7, help="コントラスト拡張の下限（埋め戻し跡のような淡い見え方を作る）")
+ap.add_argument("--hires", action="store_true", help="高解像度の特徴を残すモデル")
 ap.add_argument("--full", action="store_true", help="全データで学習（検証なし）")
 args = ap.parse_args()
 
@@ -55,7 +57,7 @@ def best_f1(yt, p):
 def fit(tr_idx, seed):
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
-    model = Net().to(DEV)
+    model = Net(hires=args.hires).to(DEV)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=2e-2)
     total = args.epochs * args.steps
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, args.lr, total_steps=total, pct_start=0.15)
@@ -68,7 +70,7 @@ def fit(tr_idx, seed):
             idx = np.concatenate([rng.choice(pos, npos), rng.choice(neg, args.bs - npos, replace=False)])
             x = X[idx].to(DEV).permute(0, 3, 1, 2).float() / 255
             t = torch.from_numpy(y[idx]).float().to(DEV)
-            x = (augment(x, args.zoom_out) - MEAN) / STD
+            x = (augment(x, args.zoom_out, args.cmin) - MEAN) / STD
             loss = F.binary_cross_entropy_with_logits(model(x), t)
             opt.zero_grad(set_to_none=True)
             loss.backward()

@@ -65,12 +65,17 @@ class Block(nn.Module):
 class Net(nn.Module):
     """ゼロから学習する小型ResNet。最後は位置ごとのスコアの最大値と平均を使う。"""
 
-    def __init__(self, w=(32, 64, 128, 192, 256), in_ch=3):
+    def __init__(self, w=(32, 64, 128, 192, 256), in_ch=3, hires=False):
         super().__init__()
-        self.stem = nn.Sequential(
-            nn.Conv2d(in_ch, 24, 5, 2, 2, bias=False), nn.BatchNorm2d(24), nn.ReLU(inplace=True),
-            nn.Conv2d(24, w[0], 3, 2, 1, bias=False), nn.BatchNorm2d(w[0]), nn.ReLU(inplace=True),
-        )
+        if hires:
+            # 最初の縮小を1段減らし、細かい模様（端のわずかな弧、気泡との違い）を残す
+            w = (16, 32, 64, 128, 192, 256)
+            self.stem = nn.Sequential(nn.Conv2d(in_ch, w[0], 5, 2, 2, bias=False), nn.BatchNorm2d(w[0]), nn.ReLU(inplace=True))
+        else:
+            self.stem = nn.Sequential(
+                nn.Conv2d(in_ch, 24, 5, 2, 2, bias=False), nn.BatchNorm2d(24), nn.ReLU(inplace=True),
+                nn.Conv2d(24, w[0], 3, 2, 1, bias=False), nn.BatchNorm2d(w[0]), nn.ReLU(inplace=True),
+            )
         layers, cin = [], w[0]
         for i, c in enumerate(w):
             layers += [Block(cin, c, 1 if i == 0 else 2), Block(c, c, 1)]
@@ -121,7 +126,7 @@ def random_zoom_out(x, zmax, p=0.5):
     return F.grid_sample(x, grid, mode="bilinear", padding_mode="reflection", align_corners=False)
 
 
-def augment(x, zoom_out=1.0):
+def augment(x, zoom_out=1.0, cmin=0.7):
     """x: 正規化前 float (B,C,H,W) 0..1。反転・回転、縮小、明るさ・コントラスト・色味・ぼかし・ノイズ。"""
     B = x.shape[0]
     k = torch.randint(0, 8, (1,)).item()
@@ -132,7 +137,7 @@ def augment(x, zoom_out=1.0):
     gamma = torch.exp(torch.empty(B, 1, 1, 1, device=dev).uniform_(-0.35, 0.35))
     x = x.clamp(1e-4, 1).pow(gamma)
     m = x.mean((1, 2, 3), keepdim=True)
-    x = (x - m) * torch.empty(B, 1, 1, 1, device=dev).uniform_(0.7, 1.4) + m
+    x = (x - m) * torch.empty(B, 1, 1, 1, device=dev).uniform_(cmin, 1.4) + m
     x = x + torch.empty(B, 1, 1, 1, device=dev).uniform_(-0.12, 0.12)
     x = x * torch.empty(B, 3, 1, 1, device=dev).uniform_(0.93, 1.07)
     if torch.rand(1).item() < 0.3:
