@@ -22,6 +22,7 @@ ap.add_argument("--bs", type=int, default=64)
 ap.add_argument("--pos_frac", type=float, default=0.25)
 ap.add_argument("--lr", type=float, default=2e-3)
 ap.add_argument("--seed", type=int, default=0)
+ap.add_argument("--zoom_out", type=float, default=1.0, help="縮小拡張の最大倍率（1で無効）")
 ap.add_argument("--full", action="store_true", help="全データで学習（検証なし）")
 args = ap.parse_args()
 
@@ -67,7 +68,7 @@ def fit(tr_idx, seed):
             idx = np.concatenate([rng.choice(pos, npos), rng.choice(neg, args.bs - npos, replace=False)])
             x = X[idx].to(DEV).permute(0, 3, 1, 2).float() / 255
             t = torch.from_numpy(y[idx]).float().to(DEV)
-            x = (augment(x) - MEAN) / STD
+            x = (augment(x, args.zoom_out) - MEAN) / STD
             loss = F.binary_cross_entropy_with_logits(model(x), t)
             opt.zero_grad(set_to_none=True)
             loss.backward()

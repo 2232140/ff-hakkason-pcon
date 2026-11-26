@@ -104,12 +104,31 @@ def dihedral(x, k):
     return x
 
 
-def augment(x):
-    """x: 正規化前 float (B,C,H,W) 0..1。反転・回転と、明るさ・コントラスト・色味・ぼかし・ノイズ。"""
+def random_zoom_out(x, zmax, p=0.5):
+    """撮影距離の違いを模した縮小。画像を 1/z 倍に縮め、余白は鏡像で埋める。
+
+    元の画像全体が必ず枠内に残るので、端で切れた穴も含めてラベルは変わらない。
+    """
+    B, dev = x.shape[0], x.device
+    z = torch.exp(torch.empty(B, device=dev).uniform_(0, float(np.log(zmax))))
+    z = torch.where(torch.rand(B, device=dev) < p, z, torch.ones_like(z))
+    t = (torch.rand(B, 2, device=dev) * 2 - 1) * (z - 1).unsqueeze(1)
+    theta = torch.zeros(B, 2, 3, device=dev)
+    theta[:, 0, 0] = z
+    theta[:, 1, 1] = z
+    theta[:, :, 2] = t
+    grid = F.affine_grid(theta, x.shape, align_corners=False)
+    return F.grid_sample(x, grid, mode="bilinear", padding_mode="reflection", align_corners=False)
+
+
+def augment(x, zoom_out=1.0):
+    """x: 正規化前 float (B,C,H,W) 0..1。反転・回転、縮小、明るさ・コントラスト・色味・ぼかし・ノイズ。"""
     B = x.shape[0]
     k = torch.randint(0, 8, (1,)).item()
     x = dihedral(x, k)
     dev = x.device
+    if zoom_out > 1:
+        x = random_zoom_out(x, zoom_out)
     gamma = torch.exp(torch.empty(B, 1, 1, 1, device=dev).uniform_(-0.35, 0.35))
     x = x.clamp(1e-4, 1).pow(gamma)
     m = x.mean((1, 2, 3), keepdim=True)
