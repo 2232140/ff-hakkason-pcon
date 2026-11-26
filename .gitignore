@@ -1,0 +1,8 @@
+# 提出用リポジトリにはコードと手順書だけを入れる（配布データ・画像・学習結果は含めない）
+/*
+!/.gitignore
+!/README.md
+!/requirements.txt
+!/src/
+__pycache__/
+.DS_Store
